@@ -11,7 +11,7 @@ GOOGLE_API_KEY = os.environ.get('GEMINI_API_KEY')
 bot = telebot.TeleBot(BOT_TOKEN)
 genai.configure(api_key=GOOGLE_API_KEY)
 
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
