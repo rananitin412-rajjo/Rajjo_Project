@@ -1,28 +1,26 @@
 import telebot
-import google.generativeai as genai
+from google import genai
 import os
 
-# Render ke environment variables se keys uthana
-# Nitin baby, dhyaan rakhna ki Render settings mein keys ke naam exact yahi hon
-BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-GOOGLE_API_KEY = os.environ.get('GEMINI_API_KEY')
+BOT_TOKEN = os.environ.get('8658724060:AAG_yi4hTy9T4g6PNfBARMKaUkeOPDjHZR0')
+GOOGLE_API_KEY = os.environ.get('AIzaSyBsWLWmzV7SNtevhNhHnAoNKd4303y75jA')
 
-# Bot aur AI configure karna
+# Naya package use kar rahe hain
+client = genai.Client(api_key=GOOGLE_API_KEY)
+
 bot = telebot.TeleBot(BOT_TOKEN)
-genai.configure(api_key=GOOGLE_API_KEY)
-
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     try:
-        # User ka message AI ko bhejna
-        response = model.generate_content(message.text)
-        # AI ka reply user ko bhejna
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=message.text
+        )
         bot.reply_to(message, response.text)
     except Exception as e:
         print(f"Error: {e}")
-        bot.reply_to(message, "Sorry Nitin baby, thodi dikkat ho rahi hai. Keys check karo!")
+        bot.reply_to(message, "Sorry Nitin baby, thodi dikkat ho rahi hai!")
 
 print("Rajjo is online...")
-bot.polling()
+bot.infinity_polling()
