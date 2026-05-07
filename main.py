@@ -8,6 +8,7 @@ GOOGLE_API_KEY = os.environ.get('AIzaSyBsWLWmzV7SNtevhNhHnAoNKd4303y75jA')
 # Naya package use kar rahe hain
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
+print(f"TOKEN mil gaya: {BOT_TOKEN}")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(func=lambda message: True)
