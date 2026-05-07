@@ -2,13 +2,11 @@ import telebot
 from google import genai
 import os
 
-BOT_TOKEN = os.environ.get('8658724060:AAF16usqjm0vSw3Hun941-F3cJyDfnX2aR4')
+# SIRF TEST KE LIYE - baad mein hata denge
+BOT_TOKEN = "8658724060:AAF16usqjm0vSw3Hun941-F3cJyDfnX2aR4"
 GOOGLE_API_KEY = os.environ.get('AIzaSyBsWLWmzV7SNtevhNhHnAoNKd4303y75jA')
 
-# Naya package use kar rahe hain
 client = genai.Client(api_key=GOOGLE_API_KEY)
-
-print(f"TOKEN mil gaya: {BOT_TOKEN}")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(func=lambda message: True)
