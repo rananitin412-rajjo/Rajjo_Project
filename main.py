@@ -2,7 +2,7 @@ import telebot
 from google import genai
 import os
 
-BOT_TOKEN = os.environ.get('8658724060:AAG_yi4hTy9T4g6PNfBARMKaUkeOPDjHZR0')
+BOT_TOKEN = os.environ.get('8658724060:AAF16usqjm0vSw3Hun941-F3cJyDfnX2aR4')
 GOOGLE_API_KEY = os.environ.get('AIzaSyBsWLWmzV7SNtevhNhHnAoNKd4303y75jA')
 
 # Naya package use kar rahe hain
