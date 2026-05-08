@@ -20,4 +20,4 @@ def handle_message(message):
         bot.reply_to(message, f"Error: {str(e)}")
 
 print("Rajjo is online...")
-bot.infinity_polling(timeout=60, request_timeout=60)
+bot.infinity_polling()
