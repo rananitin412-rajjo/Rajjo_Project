@@ -2,7 +2,6 @@ import telebot
 from google import genai
 import os
 
-# TEST MODE - dono hardcode
 BOT_TOKEN = "8658724060:AAF16usqjm0vSw3Hun941-F3cJyDfnX2aR4"
 GOOGLE_API_KEY = "AIzaSyBsWLWmzV7SNtevhNhHnAoNKd4303y75jA"
 
@@ -18,10 +17,7 @@ def handle_message(message):
         )
         bot.reply_to(message, response.text)
     except Exception as e:
-        print(f"Gemini Error: {e}")
-        bot.reply_to(message, f"Error: {e}")
-except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
 print("Rajjo is online...")
-bot.infinity_polling()
+bot.infinity_polling(timeout=60, request_timeout=60)
