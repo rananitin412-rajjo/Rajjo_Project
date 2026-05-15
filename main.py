@@ -2,8 +2,8 @@ import telebot
 from google import genai
 import os
 
-BOT_TOKEN = "8658724060:AAF16usqjm0vSw3Hun941-F3cJyDfnX2aR4"
-GOOGLE_API_KEY = "AIzaSyCxQlLlWlh5jNL4B44Cy0K0JwxJDJqsA60"
+BOT_TOKEN = "8658724060:AAGh0KYGRGwu1aEIaA9RMd437U_jtL76V0s"
+GOOGLE_API_KEY = "AIzaSyDFGTJwdNTt-uBRv5DBZZA7HpgU5-itG_Q"
 
 client = genai.Client(api_key=GOOGLE_API_KEY)
 bot = telebot.TeleBot(BOT_TOKEN)
