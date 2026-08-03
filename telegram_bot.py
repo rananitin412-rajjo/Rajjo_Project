@@ -7,7 +7,26 @@ import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from config import TELEGRAM_TOKEN
-from market_data import get_btc_market_data, get_gold_price
+from llm import ask_llm, ask_llm_with_image
+from personality import SYSTEM_PROMPT
+from trading_knowledge import TRADING_KNOWLEDGE
+
+from memory import (
+    create_database,
+    save_memory,
+    get_all_memories
+)
+
+from memory_ai import extract_all
+from market_data import get_btc_market_data, get_gold_price, get_market_snapshot
+
+from trade_journal import (
+    create_journal_table,
+    add_trade,
+    close_trade,
+    get_journal_summary,
+    get_open_trades
+)
 
 from alerts_db import (
     create_alert_tables,
@@ -26,14 +45,22 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 MOVE_THRESHOLD_PERCENT = 2.0
 ROLLING_WINDOW_MINUTES = 30
 PRICE_CHECK_INTERVAL = 120
-COMMAND_CHECK_INTERVAL = 15
+COMMAND_CHECK_INTERVAL = 5
 MOVE_ALERT_COOLDOWN = 3600
 
 last_update_id = None
 last_move_alert_time = {"BTC": 0, "GOLD": 0}
 
+# Poori conversation history yahan rakhते hain (jaise app.py mein session_state karta tha)
+conversation_history = [
+    {
+        "role": "system",
+        "content": SYSTEM_PROMPT + "\n\n" + TRADING_KNOWLEDGE
+    }
+]
 
-# ---- Render ke liye silent HTTP server (sirf "no open ports" error avoid karne ke liye) ----
+
+# ---- Render ke liye silent HTTP server ----
 
 class SilentHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -42,7 +69,7 @@ class SilentHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Rajjo bot is alive")
 
     def log_message(self, format, *args):
-        pass  # terminal ko spam se bachane ke liye
+        pass
 
 
 def start_keep_alive_server():
@@ -51,7 +78,7 @@ def start_keep_alive_server():
     server.serve_forever()
 
 
-# ---- Bot ka actual logic (pehle jaisa hi) ----
+# ---- Telegram helpers ----
 
 def send_message(chat_id, text):
     try:
@@ -62,6 +89,89 @@ def send_message(chat_id, text):
     except Exception as e:
         print(f"Telegram send error: {e}")
 
+
+def download_telegram_photo(file_id):
+    """Telegram se photo download karta hai, raw bytes return karta hai."""
+    try:
+        file_info = requests.get(
+            f"{TELEGRAM_API}/getFile", params={"file_id": file_id}, timeout=10
+        ).json()
+
+        file_path = file_info["result"]["file_path"]
+        file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+
+        image_response = requests.get(file_url, timeout=15)
+        return image_response.content
+
+    except Exception as e:
+        print(f"Photo download error: {e}")
+        return None
+
+
+# ---- Core reply logic (shared by text aur image) ----
+
+def build_context_and_reply(user_text, image_bytes=None):
+
+    global conversation_history
+
+    conversation_history.append({"role": "user", "content": user_text or "[Image bheji]"})
+
+    open_trades = get_open_trades()
+    extracted = extract_all(user_text or "chart image", open_trades)
+
+    memory = extracted.get("memory")
+    if memory:
+        save_memory(memory.get("category"), memory.get("key"), memory.get("value"))
+
+    new_trade = extracted.get("new_trade")
+    if new_trade:
+        add_trade(
+            new_trade.get("asset"), new_trade.get("direction"),
+            new_trade.get("entry_price"), new_trade.get("stop_loss"),
+            new_trade.get("target"), new_trade.get("reasoning")
+        )
+
+    close_info = extracted.get("close_trade")
+    if close_info:
+        close_trade(close_info.get("trade_id"), close_info.get("outcome"))
+
+    memory_text = ""
+    for category, key, value in get_all_memories():
+        memory_text += f"[{category}] {key}: {value}\n"
+
+    market_text = get_market_snapshot()
+    journal_text = get_journal_summary()
+
+    live_context = {
+        "role": "system",
+        "content": (
+            "Yeh Rana ke baare mein stored memory hai. Sirf tab use karo jab relevant ho.\n\n"
+            f"{memory_text}\n\n"
+            "Yeh abhi ke live market prices hain. Agar Rana price ya market ke "
+            "baare mein pooche to inhi actual numbers ka use karo.\n\n"
+            f"{market_text}\n\n"
+            "Yeh Rana ki trade journal hai.\n\n"
+            f"{journal_text}"
+        )
+    }
+
+    messages_for_this_call = conversation_history + [live_context]
+
+    if image_bytes:
+        reply = ask_llm_with_image(messages_for_this_call, image_bytes, "image/jpeg")
+    else:
+        reply = ask_llm(messages_for_this_call)
+
+    conversation_history.append({"role": "assistant", "content": reply})
+
+    # History bahut lambi na ho jaaye, isliye last 20 messages hi rakhte hain (system chhod ke)
+    if len(conversation_history) > 21:
+        conversation_history[:] = [conversation_history[0]] + conversation_history[-20:]
+
+    return reply
+
+
+# ---- Commands aur messages check karna ----
 
 def check_commands():
     global last_update_id
@@ -82,10 +192,13 @@ def check_commands():
                 continue
 
             chat_id = message["chat"]["id"]
-            text = message.get("text", "").strip()
-
             save_chat_id(chat_id)
 
+            text = message.get("text", "").strip() if message.get("text") else ""
+            photo = message.get("photo")
+            caption = message.get("caption", "").strip() if message.get("caption") else ""
+
+            # --- Alert command ---
             if text.startswith("/alert"):
                 parts = text.split()
                 if len(parts) == 3:
@@ -93,26 +206,46 @@ def check_commands():
                     try:
                         level = float(parts[2])
                         add_price_alert(asset, level)
-                        send_message(
-                            chat_id,
-                            f"Theek hai Rana! {asset} ke {level} level pe pahunchte hi bata dungi. ✅"
-                        )
+                        send_message(chat_id, f"Theek hai Rana! {asset} ke {level} level pe pahunchte hi bata dungi. ✅")
                     except ValueError:
                         send_message(chat_id, "Format sahi nahi hai. Try: /alert BTC 65000")
                 else:
                     send_message(chat_id, "Format: /alert BTC 65000 (ya /alert GOLD 4100)")
+                continue
 
-            elif text.lower() in ["/start", "hi", "hello"]:
+            # --- Start command ---
+            if text.lower() == "/start":
                 send_message(
                     chat_id,
-                    "Hi Rana! Main Rajjo hoon, ab main market pe nazar rakhungi aur "
-                    "koi bada move ya tumhara set kiya hua level aane par bata dungi. 💹\n\n"
+                    "Hi Rana! Main Rajjo hoon. Ab tum mujhse normal baat bhi kar sakte ho, "
+                    "chart bhej sakte ho, aur main market pe nazar bhi rakhungi. 💹\n\n"
                     "Alert set karne ke liye: /alert BTC 65000"
                 )
+                continue
+
+            # --- Photo (chart image) ---
+            if photo:
+                send_message(chat_id, "Dekh rahi hoon... ⏳")
+                largest_photo = photo[-1]
+                image_bytes = download_telegram_photo(largest_photo["file_id"])
+
+                if image_bytes:
+                    reply = build_context_and_reply(caption, image_bytes)
+                    send_message(chat_id, reply)
+                else:
+                    send_message(chat_id, "Image download nahi ho payi, dobara try karo Rana.")
+                continue
+
+            # --- Normal text message (full conversation) ---
+            if text:
+                reply = build_context_and_reply(text)
+                send_message(chat_id, reply)
 
     except Exception as e:
         print(f"Command check error: {e}")
 
+
+# ---- Background price monitoring (jaisa pehle tha) ----
 
 def check_price_moves(chat_id):
 
@@ -172,12 +305,13 @@ def check_price_moves(chat_id):
 
 
 def main():
+    create_database()
+    create_journal_table()
     create_alert_tables()
 
-    # Keep-alive server ko alag thread mein chalao
     threading.Thread(target=start_keep_alive_server, daemon=True).start()
 
-    print("Rajjo market-monitoring bot shuru ho gaya hai...")
+    print("Rajjo (full conversation + monitoring) shuru ho gaya hai...")
 
     last_price_check = 0
 
