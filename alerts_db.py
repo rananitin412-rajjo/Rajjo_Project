@@ -120,3 +120,23 @@ def get_chat_id():
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else None
+
+
+def get_price_history_list(asset, limit=100):
+    """Asset ki recent price history ek list mein return karta hai (oldest se newest)."""
+
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT price FROM price_history WHERE asset = ? ORDER BY id DESC LIMIT ?",
+        (asset, limit)
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    prices = [row[0] for row in rows]
+    prices.reverse()  # oldest first
+
+    return prices
