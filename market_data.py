@@ -90,12 +90,17 @@ def get_btc_indicators():
         url = "https://api.binance.com/api/v3/klines"
         params = {"symbol": "BTCUSDT", "interval": "1h", "limit": 100}
         response = requests.get(url, params=params, timeout=8)
-        klines = response.json()
 
-        closes = [float(candle[4]) for candle in klines]  # close price is index 4
+        if response.status_code != 200:
+            print(f"Binance klines error: status {response.status_code}, response: {response.text[:200]}")
+            return None
+
+        klines = response.json()
+        closes = [float(candle[4]) for candle in klines]
 
         return calculate_indicators_from_prices(closes)
-    except Exception:
+    except Exception as e:
+        print(f"Binance klines exception: {e}")
         return None
 
 
