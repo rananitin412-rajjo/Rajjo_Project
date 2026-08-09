@@ -43,15 +43,14 @@ from alerts_db import (
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 MOVE_THRESHOLD_PERCENT = 2.0
-ROLLING_WINDOW_MINUTES = 30
 PRICE_CHECK_INTERVAL = 120
 COMMAND_CHECK_INTERVAL = 5
 MOVE_ALERT_COOLDOWN = 3600
 
 last_update_id = None
-last_move_alert_time = {"BTC": 0, "GOLD": 0}
+last_move_alert_time = {}
 
-# Poori conversation history yahan rakhते hain (jaise app.py mein session_state karta tha)
+# Poori conversation history yahan rakhte hain
 conversation_history = [
     {
         "role": "system",
@@ -164,7 +163,6 @@ def build_context_and_reply(user_text, image_bytes=None):
 
     conversation_history.append({"role": "assistant", "content": reply})
 
-    # History bahut lambi na ho jaaye, isliye last 20 messages hi rakhte hain (system chhod ke)
     if len(conversation_history) > 21:
         conversation_history[:] = [conversation_history[0]] + conversation_history[-20:]
 
@@ -199,7 +197,7 @@ def check_commands():
             caption = message.get("caption", "").strip() if message.get("caption") else ""
 
             # --- Alert command ---
-            if text.startswith("/alert"):
+            if text.lower().startswith("/alert"):
                 parts = text.split()
                 if len(parts) == 3:
                     asset = parts[1].upper()
@@ -245,7 +243,7 @@ def check_commands():
         print(f"Command check error: {e}")
 
 
-# ---- Background price monitoring (jaisa pehle tha) ----
+# ---- Background price monitoring (30-min aur 6-hour dono windows check karta hai) ----
 
 def check_price_moves(chat_id):
 
@@ -254,37 +252,46 @@ def check_price_moves(chat_id):
 
     now = time.time()
 
+    windows_to_check = [
+        (30, "30 minute"),
+        (360, "6 ghante")
+    ]
+
     if btc:
         save_price_snapshot("BTC", btc["price"])
-        old_price = get_price_minutes_ago("BTC", ROLLING_WINDOW_MINUTES)
-        if old_price:
-            change_percent = ((btc["price"] - old_price) / old_price) * 100
-            if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
-                if now - last_move_alert_time["BTC"] > MOVE_ALERT_COOLDOWN:
-                    direction = "upar 📈" if change_percent > 0 else "neeche 📉"
-                    send_message(
-                        chat_id,
-                        f"Rana! BTC pichle {ROLLING_WINDOW_MINUTES} minute mein "
-                        f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
-                        f"Abhi price: ${btc['price']:,.2f}. Check kar lo! ⚡"
-                    )
-                    last_move_alert_time["BTC"] = now
+        for window_minutes, window_label in windows_to_check:
+            old_price = get_price_minutes_ago("BTC", window_minutes)
+            if old_price:
+                change_percent = ((btc["price"] - old_price) / old_price) * 100
+                if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
+                    cooldown_key = f"BTC_{window_minutes}"
+                    if now - last_move_alert_time.get(cooldown_key, 0) > MOVE_ALERT_COOLDOWN:
+                        direction = "upar 📈" if change_percent > 0 else "neeche 📉"
+                        send_message(
+                            chat_id,
+                            f"Rana! BTC pichle {window_label} mein "
+                            f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
+                            f"Abhi price: ${btc['price']:,.2f}. Check kar lo! ⚡"
+                        )
+                        last_move_alert_time[cooldown_key] = now
 
     if gold:
         save_price_snapshot("GOLD", gold)
-        old_price = get_price_minutes_ago("GOLD", ROLLING_WINDOW_MINUTES)
-        if old_price:
-            change_percent = ((gold - old_price) / old_price) * 100
-            if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
-                if now - last_move_alert_time["GOLD"] > MOVE_ALERT_COOLDOWN:
-                    direction = "upar 📈" if change_percent > 0 else "neeche 📉"
-                    send_message(
-                        chat_id,
-                        f"Rana! Gold pichle {ROLLING_WINDOW_MINUTES} minute mein "
-                        f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
-                        f"Abhi price: ${gold:,.2f}. Check kar lo! ⚡"
-                    )
-                    last_move_alert_time["GOLD"] = now
+        for window_minutes, window_label in windows_to_check:
+            old_price = get_price_minutes_ago("GOLD", window_minutes)
+            if old_price:
+                change_percent = ((gold - old_price) / old_price) * 100
+                if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
+                    cooldown_key = f"GOLD_{window_minutes}"
+                    if now - last_move_alert_time.get(cooldown_key, 0) > MOVE_ALERT_COOLDOWN:
+                        direction = "upar 📈" if change_percent > 0 else "neeche 📉"
+                        send_message(
+                            chat_id,
+                            f"Rana! Gold pichle {window_label} mein "
+                            f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
+                            f"Abhi price: ${gold:,.2f}. Check kar lo! ⚡"
+                        )
+                        last_move_alert_time[cooldown_key] = now
 
     current_prices = {}
     if btc:
