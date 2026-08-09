@@ -3,3 +3,8 @@ google-genai
 python-dotenv
 requests
 openai
+requests
+python-dotenv
+streamlit
+ta
+pandas
