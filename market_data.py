@@ -10,26 +10,33 @@ from alerts_db import get_price_history_list
 
 
 def get_btc_market_data():
-    """Binance se BTC ka current price + 24hr trend data fetch karta hai."""
+    """CoinGecko se BTC ka current price + 24hr trend data fetch karta hai."""
     try:
-        url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-        headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
-        response = requests.get(url, headers=headers, timeout=8)
+        url = "https://api.coingecko.com/api/v3/coins/bitcoin"
+        params = {
+            "localization": "false",
+            "tickers": "false",
+            "market_data": "true",
+            "community_data": "false",
+            "developer_data": "false"
+        }
+        response = requests.get(url, params=params, timeout=10)
 
         if response.status_code != 200:
-            print(f"Binance ticker error: status {response.status_code}, response: {response.text[:200]}")
+            print(f"CoinGecko ticker error: status {response.status_code}, response: {response.text[:200]}")
             return None
 
         data = response.json()
+        market_data = data["market_data"]
 
         return {
-            "price": float(data["lastPrice"]),
-            "high_24h": float(data["highPrice"]),
-            "low_24h": float(data["lowPrice"]),
-            "change_percent": float(data["priceChangePercent"])
+            "price": float(market_data["current_price"]["usd"]),
+            "high_24h": float(market_data["high_24h"]["usd"]),
+            "low_24h": float(market_data["low_24h"]["usd"]),
+            "change_percent": float(market_data["price_change_percentage_24h"])
         }
     except Exception as e:
-        print(f"Binance ticker exception: {e}")
+        print(f"CoinGecko ticker exception: {e}")
         return None
 
 
@@ -55,10 +62,9 @@ def calculate_indicators_from_prices(prices):
     """Ek price list se RSI, MACD, aur Moving Averages calculate karta hai."""
 
     if len(prices) < 20:
-        return None  # itna data nahi hai abhi indicators ke liye
+        return None
 
     series = pd.Series(prices)
-
     result = {}
 
     try:
@@ -101,22 +107,22 @@ def calculate_indicators_from_prices(prices):
 
 
 def get_btc_indicators():
-    """Binance ke 1-hour candles se BTC indicators calculate karta hai (accurate, instant)."""
+    """CoinGecko ke hourly data se BTC indicators calculate karta hai."""
     try:
-        url = "https://api.binance.com/api/v3/klines"
-        params = {"symbol": "BTCUSDT", "interval": "1h", "limit": 100}
-        response = requests.get(url, params=params, timeout=8)
+        url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+        params = {"vs_currency": "usd", "days": "7", "interval": "hourly"}
+        response = requests.get(url, params=params, timeout=10)
 
         if response.status_code != 200:
-            print(f"Binance klines error: status {response.status_code}, response: {response.text[:200]}")
+            print(f"CoinGecko chart error: status {response.status_code}, response: {response.text[:200]}")
             return None
 
-        klines = response.json()
-        closes = [float(candle[4]) for candle in klines]
+        data = response.json()
+        closes = [point[1] for point in data["prices"]]
 
         return calculate_indicators_from_prices(closes)
     except Exception as e:
-        print(f"Binance klines exception: {e}")
+        print(f"CoinGecko chart exception: {e}")
         return None
 
 
@@ -164,8 +170,6 @@ def format_indicators(indicators, asset_name):
 def get_market_snapshot():
     """Sab market data + indicators ko ek readable text mein format karta hai."""
 
-    print("get_market_snapshot() called - fetching BTC and Gold data...")
-
     btc = get_btc_market_data()
     gold = get_gold_price()
 
@@ -193,7 +197,5 @@ def get_market_snapshot():
         snapshot += format_indicators(gold_indicators, "Gold") + "\n"
     else:
         snapshot += "Gold (XAU/USD): price fetch nahi ho payi abhi\n"
-
-    print(f"get_market_snapshot() result:\n{snapshot}")
 
     return snapshot
