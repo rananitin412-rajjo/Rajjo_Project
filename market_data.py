@@ -14,7 +14,12 @@ def get_btc_market_data():
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
         headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=8)
+
+        if response.status_code != 200:
+            print(f"Binance ticker error: status {response.status_code}, response: {response.text[:200]}")
+            return None
+
         data = response.json()
 
         return {
@@ -23,7 +28,8 @@ def get_btc_market_data():
             "low_24h": float(data["lowPrice"]),
             "change_percent": float(data["priceChangePercent"])
         }
-    except Exception:
+    except Exception as e:
+        print(f"Binance ticker exception: {e}")
         return None
 
 
@@ -32,10 +38,16 @@ def get_gold_price():
     try:
         url = "https://api.gold-api.com/price/XAU"
         headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=8)
+
+        if response.status_code != 200:
+            print(f"Gold API error: status {response.status_code}, response: {response.text[:200]}")
+            return None
+
         data = response.json()
         return float(data["price"])
-    except Exception:
+    except Exception as e:
+        print(f"Gold API exception: {e}")
         return None
 
 
@@ -52,14 +64,16 @@ def calculate_indicators_from_prices(prices):
     try:
         rsi = RSIIndicator(close=series, window=14).rsi()
         result["rsi"] = round(rsi.iloc[-1], 2)
-    except Exception:
+    except Exception as e:
+        print(f"RSI calculation error: {e}")
         result["rsi"] = None
 
     try:
         macd_calc = MACD(close=series)
         result["macd"] = round(macd_calc.macd().iloc[-1], 4)
         result["macd_signal"] = round(macd_calc.macd_signal().iloc[-1], 4)
-    except Exception:
+    except Exception as e:
+        print(f"MACD calculation error: {e}")
         result["macd"] = None
         result["macd_signal"] = None
 
@@ -69,7 +83,8 @@ def calculate_indicators_from_prices(prices):
             result["sma_20"] = round(sma20.iloc[-1], 2)
         else:
             result["sma_20"] = None
-    except Exception:
+    except Exception as e:
+        print(f"SMA20 calculation error: {e}")
         result["sma_20"] = None
 
     try:
@@ -78,7 +93,8 @@ def calculate_indicators_from_prices(prices):
             result["sma_50"] = round(sma50.iloc[-1], 2)
         else:
             result["sma_50"] = None
-    except Exception:
+    except Exception as e:
+        print(f"SMA50 calculation error: {e}")
         result["sma_50"] = None
 
     return result
@@ -109,7 +125,8 @@ def get_gold_indicators():
     try:
         prices = get_price_history_list("GOLD", limit=100)
         return calculate_indicators_from_prices(prices)
-    except Exception:
+    except Exception as e:
+        print(f"Gold indicators exception: {e}")
         return None
 
 
@@ -147,6 +164,8 @@ def format_indicators(indicators, asset_name):
 def get_market_snapshot():
     """Sab market data + indicators ko ek readable text mein format karta hai."""
 
+    print("get_market_snapshot() called - fetching BTC and Gold data...")
+
     btc = get_btc_market_data()
     gold = get_gold_price()
 
@@ -174,5 +193,7 @@ def get_market_snapshot():
         snapshot += format_indicators(gold_indicators, "Gold") + "\n"
     else:
         snapshot += "Gold (XAU/USD): price fetch nahi ho payi abhi\n"
+
+    print(f"get_market_snapshot() result:\n{snapshot}")
 
     return snapshot
