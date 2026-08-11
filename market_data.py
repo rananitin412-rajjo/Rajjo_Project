@@ -16,35 +16,29 @@ CACHE_DURATION = 90  # seconds
 
 
 def get_btc_market_data():
-    """CoinGecko se BTC ka current price + 24hr trend data fetch karta hai (cached)."""
+    """CryptoCompare se BTC ka current price + 24hr trend data fetch karta hai (cached)."""
 
     now = time.time()
     if _btc_cache["data"] and (now - _btc_cache["timestamp"]) < CACHE_DURATION:
         return _btc_cache["data"]
 
     try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin"
-        params = {
-            "localization": "false",
-            "tickers": "false",
-            "market_data": "true",
-            "community_data": "false",
-            "developer_data": "false"
-        }
+        url = "https://min-api.cryptocompare.com/data/pricemultifull"
+        params = {"fsyms": "BTC", "tsyms": "USD"}
         response = requests.get(url, params=params, timeout=10)
 
         if response.status_code != 200:
-            print(f"CoinGecko ticker error: status {response.status_code}, response: {response.text[:200]}")
+            print(f"CryptoCompare ticker error: status {response.status_code}, response: {response.text[:200]}")
             return _btc_cache["data"]
 
         data = response.json()
-        market_data = data["market_data"]
+        raw = data["RAW"]["BTC"]["USD"]
 
         result = {
-            "price": float(market_data["current_price"]["usd"]),
-            "high_24h": float(market_data["high_24h"]["usd"]),
-            "low_24h": float(market_data["low_24h"]["usd"]),
-            "change_percent": float(market_data["price_change_percentage_24h"])
+            "price": float(raw["PRICE"]),
+            "high_24h": float(raw["HIGH24HOUR"]),
+            "low_24h": float(raw["LOW24HOUR"]),
+            "change_percent": float(raw["CHANGEPCT24HOUR"])
         }
 
         _btc_cache["data"] = result
@@ -52,7 +46,7 @@ def get_btc_market_data():
 
         return result
     except Exception as e:
-        print(f"CoinGecko ticker exception: {e}")
+        print(f"CryptoCompare ticker exception: {e}")
         return _btc_cache["data"]
 
 
@@ -123,23 +117,23 @@ def calculate_indicators_from_prices(prices):
 
 
 def get_btc_indicators():
-    """CoinGecko ke hourly data se BTC indicators calculate karta hai (cached)."""
+    """CryptoCompare ke hourly candles se BTC indicators calculate karta hai (cached)."""
 
     now = time.time()
     if _btc_indicators_cache["data"] and (now - _btc_indicators_cache["timestamp"]) < CACHE_DURATION:
         return _btc_indicators_cache["data"]
 
     try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-        params = {"vs_currency": "usd", "days": "7", "interval": "hourly"}
+        url = "https://min-api.cryptocompare.com/data/v2/histohour"
+        params = {"fsym": "BTC", "tsym": "USD", "limit": 100}
         response = requests.get(url, params=params, timeout=10)
 
         if response.status_code != 200:
-            print(f"CoinGecko chart error: status {response.status_code}, response: {response.text[:200]}")
+            print(f"CryptoCompare chart error: status {response.status_code}, response: {response.text[:200]}")
             return _btc_indicators_cache["data"]
 
         data = response.json()
-        closes = [point[1] for point in data["prices"]]
+        closes = [point["close"] for point in data["Data"]["Data"]]
 
         result = calculate_indicators_from_prices(closes)
 
@@ -148,7 +142,7 @@ def get_btc_indicators():
 
         return result
     except Exception as e:
-        print(f"CoinGecko chart exception: {e}")
+        print(f"CryptoCompare chart exception: {e}")
         return _btc_indicators_cache["data"]
 
 
