@@ -19,6 +19,7 @@ from memory import (
 
 from memory_ai import extract_all
 from market_data import get_btc_market_data, get_gold_price, get_market_snapshot
+from news import format_news_snapshot
 
 from trade_journal import (
     create_journal_table,
@@ -50,7 +51,6 @@ MOVE_ALERT_COOLDOWN = 3600
 last_update_id = None
 last_move_alert_time = {}
 
-# Poori conversation history yahan rakhte hain
 conversation_history = [
     {
         "role": "system",
@@ -58,8 +58,6 @@ conversation_history = [
     }
 ]
 
-
-# ---- Render ke liye silent HTTP server ----
 
 class SilentHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -77,8 +75,6 @@ def start_keep_alive_server():
     server.serve_forever()
 
 
-# ---- Telegram helpers ----
-
 def send_message(chat_id, text):
     try:
         requests.post(
@@ -90,7 +86,6 @@ def send_message(chat_id, text):
 
 
 def download_telegram_photo(file_id):
-    """Telegram se photo download karta hai, raw bytes return karta hai."""
     try:
         file_info = requests.get(
             f"{TELEGRAM_API}/getFile", params={"file_id": file_id}, timeout=10
@@ -106,8 +101,6 @@ def download_telegram_photo(file_id):
         print(f"Photo download error: {e}")
         return None
 
-
-# ---- Core reply logic (shared by text aur image) ----
 
 def build_context_and_reply(user_text, image_bytes=None):
 
@@ -140,6 +133,7 @@ def build_context_and_reply(user_text, image_bytes=None):
 
     market_text = get_market_snapshot()
     journal_text = get_journal_summary()
+    news_text = format_news_snapshot()
 
     live_context = {
         "role": "system",
@@ -150,7 +144,11 @@ def build_context_and_reply(user_text, image_bytes=None):
             "baare mein pooche to inhi actual numbers ka use karo.\n\n"
             f"{market_text}\n\n"
             "Yeh Rana ki trade journal hai.\n\n"
-            f"{journal_text}"
+            f"{journal_text}\n\n"
+            "Yeh latest financial news headlines hain. Agar Rana news ya market "
+            "events ke baare mein pooche, ya agar koi headline directly gold/crypto "
+            "se related ho aur relevant ho, to iska context use karo. Warna ignore karo.\n\n"
+            f"{news_text}"
         )
     }
 
@@ -168,8 +166,6 @@ def build_context_and_reply(user_text, image_bytes=None):
 
     return reply
 
-
-# ---- Commands aur messages check karna ----
 
 def check_commands():
     global last_update_id
@@ -196,7 +192,6 @@ def check_commands():
             photo = message.get("photo")
             caption = message.get("caption", "").strip() if message.get("caption") else ""
 
-            # --- Alert command ---
             if text.lower().startswith("/alert"):
                 parts = text.split()
                 if len(parts) == 3:
@@ -211,7 +206,6 @@ def check_commands():
                     send_message(chat_id, "Format: /alert BTC 65000 (ya /alert GOLD 4100)")
                 continue
 
-            # --- Start command ---
             if text.lower() == "/start":
                 send_message(
                     chat_id,
@@ -221,7 +215,6 @@ def check_commands():
                 )
                 continue
 
-            # --- Photo (chart image) ---
             if photo:
                 send_message(chat_id, "Dekh rahi hoon... ⏳")
                 largest_photo = photo[-1]
@@ -234,7 +227,6 @@ def check_commands():
                     send_message(chat_id, "Image download nahi ho payi, dobara try karo Rana.")
                 continue
 
-            # --- Normal text message (full conversation) ---
             if text:
                 reply = build_context_and_reply(text)
                 send_message(chat_id, reply)
@@ -242,8 +234,6 @@ def check_commands():
     except Exception as e:
         print(f"Command check error: {e}")
 
-
-# ---- Background price monitoring (30-min aur 6-hour dono windows check karta hai) ----
 
 def check_price_moves(chat_id):
 
