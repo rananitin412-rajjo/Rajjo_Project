@@ -20,6 +20,7 @@ from memory import (
 from memory_ai import extract_all
 from market_data import get_btc_market_data, get_gold_price, get_market_snapshot
 from news import format_news_snapshot
+from notes import create_notes_table, save_note, format_notes_snapshot
 
 from trade_journal import (
     create_journal_table,
@@ -48,9 +49,6 @@ PRICE_CHECK_INTERVAL = 120
 COMMAND_CHECK_INTERVAL = 5
 
 last_update_id = None
-
-# Har asset+window ke liye track karte hain: kya abhi ek "active move" chal raha hai,
-# aur us move ka extreme point (highest high ya lowest low) kya tha
 move_state = {}
 
 conversation_history = [
@@ -136,6 +134,7 @@ def build_context_and_reply(user_text, image_bytes=None):
     market_text = get_market_snapshot()
     journal_text = get_journal_summary()
     news_text = format_news_snapshot()
+    notes_text = format_notes_snapshot()
 
     live_context = {
         "role": "system",
@@ -150,7 +149,8 @@ def build_context_and_reply(user_text, image_bytes=None):
             "Yeh latest financial news headlines hain. Agar Rana news ya market "
             "events ke baare mein pooche, ya agar koi headline directly gold/crypto "
             "se related ho aur relevant ho, to iska context use karo. Warna ignore karo.\n\n"
-            f"{news_text}"
+            f"{news_text}\n\n"
+            f"{notes_text}"
         )
     }
 
@@ -194,6 +194,15 @@ def check_commands():
             photo = message.get("photo")
             caption = message.get("caption", "").strip() if message.get("caption") else ""
 
+            if text.lower().startswith("/remember"):
+                note_content = text[len("/remember"):].strip()
+                if note_content:
+                    save_note(note_content)
+                    send_message(chat_id, f"Theek hai Rana, ye maine permanently yaad rakh liya: \"{note_content}\" 💾")
+                else:
+                    send_message(chat_id, "Format: /remember jo bhi baat yaad rakhni ho")
+                continue
+
             if text.lower().startswith("/alert"):
                 parts = text.split()
                 if len(parts) == 3:
@@ -213,7 +222,8 @@ def check_commands():
                     chat_id,
                     "Hi Rana! Main Rajjo hoon. Ab tum mujhse normal baat bhi kar sakte ho, "
                     "chart bhej sakte ho, aur main market pe nazar bhi rakhungi. 💹\n\n"
-                    "Alert set karne ke liye: /alert BTC 65000"
+                    "Alert set karne ke liye: /alert BTC 65000\n"
+                    "Kuch permanently yaad rakhwane ke liye: /remember jo bhi baat"
                 )
                 continue
 
@@ -238,7 +248,6 @@ def check_commands():
 
 
 def check_single_asset_move(chat_id, asset_name, current_price, window_minutes, window_label):
-    """Ek asset ke ek window ke liye move check karta hai - sirf naye extremes pe notify karta hai."""
 
     old_price = get_price_minutes_ago(asset_name, window_minutes)
     if not old_price:
@@ -253,7 +262,6 @@ def check_single_asset_move(chat_id, asset_name, current_price, window_minutes, 
         direction = "up" if change_percent > 0 else "down"
 
         if current_state is None or current_state["direction"] != direction:
-            # Naya move shuru hua (ya opposite direction mein reverse hua)
             move_state[state_key] = {
                 "direction": direction,
                 "extreme_price": current_price,
@@ -267,7 +275,6 @@ def check_single_asset_move(chat_id, asset_name, current_price, window_minutes, 
                 f"Abhi price: ${current_price:,.2f}. Check kar lo! ⚡"
             )
         else:
-            # Same direction mein continue ho raha hai - sirf naya extreme hone par hi update/notify karo
             is_new_extreme = (
                 (direction == "up" and change_percent > current_state["extreme_change"] + 1.0) or
                 (direction == "down" and change_percent < current_state["extreme_change"] - 1.0)
@@ -282,7 +289,6 @@ def check_single_asset_move(chat_id, asset_name, current_price, window_minutes, 
                     f"{abs(change_percent):.2f}% {trend_emoji}. Abhi price: ${current_price:,.2f} ⚡"
                 )
     else:
-        # Move ab threshold se neeche aa gaya hai, state reset karo taaki agla move fresh mana jaaye
         if state_key in move_state:
             del move_state[state_key]
 
@@ -329,6 +335,7 @@ def main():
     create_database()
     create_journal_table()
     create_alert_tables()
+    create_notes_table()
 
     threading.Thread(target=start_keep_alive_server, daemon=True).start()
 
