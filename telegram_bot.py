@@ -194,11 +194,16 @@ def check_commands():
             photo = message.get("photo")
             caption = message.get("caption", "").strip() if message.get("caption") else ""
 
+            if text.lower() == "/reset":
+                conversation_history[:] = [conversation_history[0]]
+                send_message(chat_id, "Theek hai Rana, maine conversation reset kar di hai. Ab fresh se baat karte hain! 😊")
+                continue
+
             if text.lower().startswith("/remember"):
                 note_content = text[len("/remember"):].strip()
                 if note_content:
                     save_note(note_content)
-                    send_message(chat_id, f"Theek hai Rana, ye maine permanently yaad rakh liya: \"{note_content}\" 💾")
+                    send_message(chat_id, "Theek hai Rana, ye maine permanently yaad rakh liya. 💾")
                 else:
                     send_message(chat_id, "Format: /remember jo bhi baat yaad rakhni ho")
                 continue
@@ -223,7 +228,8 @@ def check_commands():
                     "Hi Rana! Main Rajjo hoon. Ab tum mujhse normal baat bhi kar sakte ho, "
                     "chart bhej sakte ho, aur main market pe nazar bhi rakhungi. 💹\n\n"
                     "Alert set karne ke liye: /alert BTC 65000\n"
-                    "Kuch permanently yaad rakhwane ke liye: /remember jo bhi baat"
+                    "Kuch permanently yaad rakhwane ke liye: /remember jo bhi baat\n"
+                    "Agar kabhi conversation atak jaaye: /reset"
                 )
                 continue
 

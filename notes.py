@@ -23,6 +23,9 @@ def create_notes_table():
 
 
 def save_note(content):
+    if len(content) > 2000:
+        content = content[:2000] + "... (baaki text truncate ho gaya, bahut lamba tha)"
+
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
