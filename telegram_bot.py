@@ -46,10 +46,12 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 MOVE_THRESHOLD_PERCENT = 2.0
 PRICE_CHECK_INTERVAL = 120
 COMMAND_CHECK_INTERVAL = 5
-MOVE_ALERT_COOLDOWN = 3600
 
 last_update_id = None
-last_move_alert_time = {}
+
+# Har asset+window ke liye track karte hain: kya abhi ek "active move" chal raha hai,
+# aur us move ka extreme point (highest high ya lowest low) kya tha
+move_state = {}
 
 conversation_history = [
     {
@@ -235,12 +237,60 @@ def check_commands():
         print(f"Command check error: {e}")
 
 
+def check_single_asset_move(chat_id, asset_name, current_price, window_minutes, window_label):
+    """Ek asset ke ek window ke liye move check karta hai - sirf naye extremes pe notify karta hai."""
+
+    old_price = get_price_minutes_ago(asset_name, window_minutes)
+    if not old_price:
+        return
+
+    change_percent = ((current_price - old_price) / old_price) * 100
+    state_key = f"{asset_name}_{window_minutes}"
+
+    current_state = move_state.get(state_key)
+
+    if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
+        direction = "up" if change_percent > 0 else "down"
+
+        if current_state is None or current_state["direction"] != direction:
+            # Naya move shuru hua (ya opposite direction mein reverse hua)
+            move_state[state_key] = {
+                "direction": direction,
+                "extreme_price": current_price,
+                "extreme_change": change_percent
+            }
+            trend_emoji = "upar 📈" if direction == "up" else "neeche 📉"
+            send_message(
+                chat_id,
+                f"Rana! {asset_name} pichle {window_label} mein "
+                f"{abs(change_percent):.2f}% {trend_emoji} move ho chuka hai. "
+                f"Abhi price: ${current_price:,.2f}. Check kar lo! ⚡"
+            )
+        else:
+            # Same direction mein continue ho raha hai - sirf naya extreme hone par hi update/notify karo
+            is_new_extreme = (
+                (direction == "up" and change_percent > current_state["extreme_change"] + 1.0) or
+                (direction == "down" and change_percent < current_state["extreme_change"] - 1.0)
+            )
+            if is_new_extreme:
+                move_state[state_key]["extreme_price"] = current_price
+                move_state[state_key]["extreme_change"] = change_percent
+                trend_emoji = "upar 📈" if direction == "up" else "neeche 📉"
+                send_message(
+                    chat_id,
+                    f"Rana! {asset_name} ka move aur badh gaya hai - ab {window_label} mein "
+                    f"{abs(change_percent):.2f}% {trend_emoji}. Abhi price: ${current_price:,.2f} ⚡"
+                )
+    else:
+        # Move ab threshold se neeche aa gaya hai, state reset karo taaki agla move fresh mana jaaye
+        if state_key in move_state:
+            del move_state[state_key]
+
+
 def check_price_moves(chat_id):
 
     btc = get_btc_market_data()
     gold = get_gold_price()
-
-    now = time.time()
 
     windows_to_check = [
         (30, "30 minute"),
@@ -250,38 +300,12 @@ def check_price_moves(chat_id):
     if btc:
         save_price_snapshot("BTC", btc["price"])
         for window_minutes, window_label in windows_to_check:
-            old_price = get_price_minutes_ago("BTC", window_minutes)
-            if old_price:
-                change_percent = ((btc["price"] - old_price) / old_price) * 100
-                if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
-                    cooldown_key = f"BTC_{window_minutes}"
-                    if now - last_move_alert_time.get(cooldown_key, 0) > MOVE_ALERT_COOLDOWN:
-                        direction = "upar 📈" if change_percent > 0 else "neeche 📉"
-                        send_message(
-                            chat_id,
-                            f"Rana! BTC pichle {window_label} mein "
-                            f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
-                            f"Abhi price: ${btc['price']:,.2f}. Check kar lo! ⚡"
-                        )
-                        last_move_alert_time[cooldown_key] = now
+            check_single_asset_move(chat_id, "BTC", btc["price"], window_minutes, window_label)
 
     if gold:
         save_price_snapshot("GOLD", gold)
         for window_minutes, window_label in windows_to_check:
-            old_price = get_price_minutes_ago("GOLD", window_minutes)
-            if old_price:
-                change_percent = ((gold - old_price) / old_price) * 100
-                if abs(change_percent) >= MOVE_THRESHOLD_PERCENT:
-                    cooldown_key = f"GOLD_{window_minutes}"
-                    if now - last_move_alert_time.get(cooldown_key, 0) > MOVE_ALERT_COOLDOWN:
-                        direction = "upar 📈" if change_percent > 0 else "neeche 📉"
-                        send_message(
-                            chat_id,
-                            f"Rana! Gold pichle {window_label} mein "
-                            f"{abs(change_percent):.2f}% {direction} move ho chuka hai. "
-                            f"Abhi price: ${gold:,.2f}. Check kar lo! ⚡"
-                        )
-                        last_move_alert_time[cooldown_key] = now
+            check_single_asset_move(chat_id, "GOLD", gold, window_minutes, window_label)
 
     current_prices = {}
     if btc:
