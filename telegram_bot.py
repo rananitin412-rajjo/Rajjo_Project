@@ -9,7 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from config import TELEGRAM_TOKEN
 from llm import ask_llm, ask_llm_with_image
 from personality import SYSTEM_PROMPT
-from trading_knowledge import TRADING_KNOWLEDGE
+from trading_knowledge import TRADING_KNOWLEDGE, INDEPENDENT_ANALYSIS_RULE
 
 from memory import (
     create_database,
@@ -54,7 +54,7 @@ move_state = {}
 conversation_history = [
     {
         "role": "system",
-        "content": SYSTEM_PROMPT + "\n\n" + TRADING_KNOWLEDGE
+        "content": SYSTEM_PROMPT + "\n\n" + TRADING_KNOWLEDGE + "\n\n" + INDEPENDENT_ANALYSIS_RULE
     }
 ]
 
